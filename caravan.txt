@@ -1,0 +1,2072 @@
+------------------------------------------------------------
+-- FALLOUT: NEW VEGAS - CARAVAN
+-- Phase 1: Basic numerical-card rules
+------------------------------------------------------------
+
+------------------------------------------------------------
+-- CONFIGURATION
+------------------------------------------------------------
+
+-- Replace these with the GUIDs of your Counter objects.
+COUNTERS = {
+    [1] = {
+        [1] = "7efe1d",
+        [2] = "cf6d1f"
+    },
+
+    [2] = {
+        [1] = "0907f1",
+        [2] = "3cb3f3"
+    },
+
+    [3] = {
+        [1] = "1a99df",
+        [2] = "d48df1"
+    }
+}
+
+
+-- Replace these with the GUIDs of your scripting zones.
+ZONES = {
+    [1] = {
+        [1] = "a69049",
+        [2] = "d28abb"
+    },
+
+    [2] = {
+        [1] = "162387",
+        [2] = "002a5b"
+    },
+
+    [3] = {
+        [1] = "30f711",
+        [2] = "080c1e"
+    }
+}
+
+------------------------------------------------------------
+-- CARAVAN SNAP LAYOUT
+------------------------------------------------------------
+
+local SNAP_COUNT = 10
+local CARAVAN_CARD_Y = 2.0
+
+-- Player 1
+local P1_SNAP_OFFSET_X = 2.0
+local P1_SNAP_OFFSET_Z = -1.0
+local P1_SNAP_SPACING = -1.25
+
+-- Player 2
+local P2_SNAP_OFFSET_X = 2.0
+local P2_SNAP_OFFSET_Z = 1.0
+local P2_SNAP_SPACING = 1.25
+------------------------------------------------------------
+-- GAME STATE
+------------------------------------------------------------
+
+GAME = {
+    caravans = {},
+
+    processing = {},
+
+    registeredCards = {},
+
+    gameOver = false
+}
+
+
+------------------------------------------------------------
+-- CREATE AN EMPTY CARAVAN
+------------------------------------------------------------
+
+function createCaravan()
+
+    return {
+        cards = {},
+
+        suit = nil,
+
+        direction = nil,
+
+        value = 0,
+
+        status = "empty",
+
+        won = false
+    }
+
+end
+
+
+------------------------------------------------------------
+-- INITIALIZE GAME
+------------------------------------------------------------
+
+function initializeGame()
+
+    GAME.caravans = {}
+
+    GAME.processing = {}
+
+    GAME.registeredCards = {}
+
+    GAME.gameOver = false
+
+    for caravan = 1, 3 do
+
+        GAME.caravans[caravan] = {}
+
+        for player = 1, 2 do
+
+            GAME.caravans[caravan][player] =
+                createCaravan()
+
+        end
+
+    end
+
+end
+
+
+------------------------------------------------------------
+-- TTS START
+------------------------------------------------------------
+
+function onLoad()
+
+    initializeGame()
+
+    generateCaravanSnapPoints()
+
+ 
+    print("================================")
+    print("CARAVAN RULES ENGINE INITIALIZED")
+    print("================================")
+
+end
+
+
+------------------------------------------------------------
+-- GET A COUNTER
+------------------------------------------------------------
+
+function getCounter(caravanNumber, player)
+
+    local guid = COUNTERS[caravanNumber][player]
+
+    local counter = getObjectFromGUID(guid)
+
+    if not counter then
+
+        print(
+            "ERROR: Could not find counter " ..
+            caravanNumber ..
+            "/" ..
+            player
+        )
+
+    end
+
+    return counter
+
+end
+
+
+------------------------------------------------------------
+-- UPDATE PHYSICAL COUNTER
+------------------------------------------------------------
+
+function updateCounter(caravanNumber, player)
+
+    local caravan =
+        GAME.caravans[caravanNumber][player]
+
+    local counter =
+        getCounter(caravanNumber, player)
+
+    if not counter then
+        return
+    end
+
+    counter.Counter.setValue(
+        caravan.value
+    )
+
+end
+
+
+------------------------------------------------------------
+-- CARD PARSING
+------------------------------------------------------------
+
+function parseCard(card)
+
+    if not card then
+        return nil, "No card supplied."
+    end
+
+
+    local name = card.getName()
+
+    if not name or name == "" then
+
+        return nil,
+            "Card has no name. " ..
+            "Use names such as 8H or 10S."
+
+    end
+
+
+    name = string.upper(
+        string.gsub(name, "%s+", "")
+    )
+
+
+    --------------------------------------------------------
+    -- JOKER
+    --------------------------------------------------------
+
+    if name == "JOKER" then
+
+        return {
+            rank = 0,
+            suit = nil,
+            type = "joker",
+            object = card
+        }
+
+    end
+
+
+    --------------------------------------------------------
+    -- SUIT
+    --------------------------------------------------------
+
+    local suitLetter =
+        string.sub(name, -1)
+
+    local suitTable = {
+
+        S = "Spades",
+
+        H = "Hearts",
+
+        D = "Diamonds",
+
+        C = "Clubs"
+    }
+
+
+    local suit =
+        suitTable[suitLetter]
+
+
+    if not suit then
+
+        return nil,
+            "Invalid suit in card name: " ..
+            name
+
+    end
+
+
+    --------------------------------------------------------
+    -- RANK
+    --------------------------------------------------------
+
+    local rankText =
+        string.sub(
+            name,
+            1,
+            #name - 1
+        )
+
+
+    local rank
+
+
+    if rankText == "A" then
+
+    rank = 1
+
+elseif rankText == "J" then
+
+    rank = 11
+
+elseif rankText == "Q" then
+
+    rank = 12
+
+elseif rankText == "K" then
+
+    rank = 13
+
+else
+
+    rank = tonumber(rankText)
+
+end
+
+
+    if not rank then
+
+    return nil,
+        "Invalid rank in card name: " ..
+        name
+
+end
+
+
+    --------------------------------------------------------
+    -- RETURN CARD DATA
+    --------------------------------------------------------
+
+    local cardType
+
+if rank >= 1 and rank <= 10 then
+
+    cardType = "number"
+
+elseif rank == 11 then
+
+    cardType = "jack"
+
+elseif rank == 12 then
+
+    cardType = "queen"
+
+elseif rank == 13 then
+
+    cardType = "king"
+
+end
+
+
+return {
+
+    rank = rank,
+
+    suit = suit,
+
+    type = cardType,
+
+    object = card,
+
+    name = name
+}
+
+end
+
+------------------------------------------------------------
+-- CALCULATE CARAVAN VALUE
+------------------------------------------------------------
+
+function calculateCaravanValue(caravan)
+
+    local total = 0
+
+    for _, card in ipairs(caravan.cards) do
+
+        if card.type == "number" then
+
+            total =
+                total + card.rank
+
+        end
+
+    end
+
+    return total
+
+end
+
+
+------------------------------------------------------------
+-- UPDATE CARAVAN VALUE
+------------------------------------------------------------
+
+function updateCaravanValue(
+    caravanNumber,
+    player
+)
+
+    local caravan =
+        GAME.caravans[caravanNumber][player]
+
+    caravan.value =
+        calculateCaravanValue(caravan)
+
+    caravan.status =
+        getCaravanStatus(caravan.value)
+
+    updateCounter(
+        caravanNumber,
+        player
+    )
+
+    updateCaravanAppearance(
+        caravanNumber,
+        player
+    )
+
+    checkWinner()
+
+end
+
+
+------------------------------------------------------------
+-- CHECK FIRST CARD
+------------------------------------------------------------
+
+function validateFirstCard(
+    caravan,
+    card
+)
+
+    if #caravan.cards > 0 then
+
+        return false,
+            "Caravan already contains cards."
+
+    end
+
+
+    if card.type ~= "number" then
+
+        return false,
+            "The first card must be an Ace or " ..
+            "numbered card."
+
+    end
+
+
+    return true
+
+end
+
+
+------------------------------------------------------------
+-- VALIDATE SECOND CARD
+------------------------------------------------------------
+
+function validateSecondCard(
+    caravan,
+    card
+)
+
+    local first =
+        caravan.cards[1]
+
+
+    if card.rank == first.rank then
+
+        return false,
+            "Two cards of the same value " ..
+            "cannot be consecutive."
+
+    end
+
+
+    if card.rank > first.rank then
+
+        caravan.direction = "ascending"
+
+    else
+
+        caravan.direction = "descending"
+
+    end
+
+
+    return true
+
+end
+
+
+------------------------------------------------------------
+-- VALIDATE SUBSEQUENT CARD
+------------------------------------------------------------
+
+function validateSubsequentCard(
+    caravan,
+    card
+)
+
+    --------------------------------------------------------
+    -- FIND THE MOST RECENT NUMERICAL CARD
+    --
+    -- Queens do not participate in numerical ordering.
+    --------------------------------------------------------
+
+    local previous = nil
+
+    for i = #caravan.cards, 1, -1 do
+
+        if caravan.cards[i].type == "number" then
+
+            previous =
+                caravan.cards[i]
+
+            break
+
+        end
+
+    end
+
+
+    --------------------------------------------------------
+    -- A numerical card must have a previous
+    -- numerical card to compare against.
+    --------------------------------------------------------
+
+    if not previous then
+
+        return false,
+            "Could not find a previous numerical card."
+
+    end
+
+
+    --------------------------------------------------------
+    -- SAME VALUE IS NEVER ALLOWED
+    --------------------------------------------------------
+
+    if card.rank == previous.rank then
+
+        return false,
+            "Two cards of the same value " ..
+            "cannot be consecutive."
+
+    end
+
+
+    --------------------------------------------------------
+    -- CHECK NUMERICAL DIRECTION
+    --------------------------------------------------------
+
+    local directionOK = false
+
+
+    if caravan.direction == "ascending" then
+
+        if card.rank > previous.rank then
+
+            directionOK = true
+
+        end
+
+
+    elseif caravan.direction == "descending" then
+
+        if card.rank < previous.rank then
+
+            directionOK = true
+
+        end
+
+    end
+
+
+    --------------------------------------------------------
+    -- CHECK CARAVAN SUIT
+    --
+    -- IMPORTANT:
+    -- This is the current caravan suit.
+    -- A Queen can change it.
+    --------------------------------------------------------
+
+    local suitOK =
+        card.suit == caravan.suit
+
+
+    --------------------------------------------------------
+    -- EITHER CONDITION IS ENOUGH
+    --------------------------------------------------------
+
+    if directionOK or suitOK then
+
+        return true
+
+    end
+
+
+    return false,
+        "Card must continue the caravan's " ..
+        "direction or match the caravan's suit."
+
+end
+
+
+------------------------------------------------------------
+-- VALIDATE A NUMERICAL CARD
+------------------------------------------------------------
+
+function validateNumberCard(
+    caravan,
+    card
+)
+
+    --------------------------------------------------------
+    -- FIRST CARD
+    --------------------------------------------------------
+
+    if #caravan.cards == 0 then
+
+        return validateFirstCard(
+            caravan,
+            card
+        )
+
+    end
+
+
+    --------------------------------------------------------
+    -- SECOND CARD
+    --------------------------------------------------------
+
+    if #caravan.cards == 1 then
+
+        return validateSecondCard(
+            caravan,
+            card
+        )
+
+    end
+
+
+    --------------------------------------------------------
+    -- THIRD+ CARD
+    --------------------------------------------------------
+
+    return validateSubsequentCard(
+        caravan,
+        card
+    )
+
+end
+
+------------------------------------------------------------
+-- GET CARAVAN CARD SNAP POSITION
+------------------------------------------------------------
+
+function getCaravanSnapPosition(
+    caravanNumber,
+    player,
+    slot
+)
+
+    local counterGUID =
+        COUNTERS[caravanNumber][player]
+
+    local counter =
+        getObjectFromGUID(counterGUID)
+
+
+    if not counter then
+
+        print(
+            "ERROR: Counter not found: " ..
+            counterGUID
+        )
+
+        return nil
+
+    end
+
+
+    local counterPosition =
+        counter.getPosition()
+
+
+    local offsetX
+    local offsetZ
+    local spacing
+
+
+    --------------------------------------------------------
+    -- PLAYER 1
+    --------------------------------------------------------
+
+    if player == 1 then
+
+        offsetX =
+            P1_SNAP_OFFSET_X
+
+        offsetZ =
+            P1_SNAP_OFFSET_Z
+
+        spacing =
+            P1_SNAP_SPACING
+
+
+    --------------------------------------------------------
+    -- PLAYER 2
+    --------------------------------------------------------
+
+    else
+
+        offsetX =
+            P2_SNAP_OFFSET_X
+
+        offsetZ =
+            P2_SNAP_OFFSET_Z
+
+        spacing =
+            P2_SNAP_SPACING
+
+    end
+
+
+    --------------------------------------------------------
+    -- Calculate position
+    --
+    -- slot 1 = first position
+    -- slot 2 = one spacing away
+    -- etc.
+    --
+    -- We intentionally don't enforce SNAP_COUNT here.
+    -- This allows physical overflow beyond slot 10.
+    --------------------------------------------------------
+
+    return {
+        x =
+            counterPosition.x +
+            offsetX,
+
+        y = CARAVAN_CARD_Y,
+
+        z =
+            counterPosition.z +
+            offsetZ +
+            (spacing * (slot - 1))
+    }
+
+end
+
+------------------------------------------------------------
+-- ADD CARD TO CARAVAN
+------------------------------------------------------------
+
+function addCardToCaravan(
+    caravanNumber,
+    player,
+    card
+)
+
+    local caravan =
+        GAME.caravans[caravanNumber][player]
+
+
+    --------------------------------------------------------
+    -- VALIDATE
+    --------------------------------------------------------
+
+    local valid, reason =
+        validateNumberCard(
+            caravan,
+            card
+        )
+
+
+    if not valid then
+
+        return false, reason
+
+    end
+
+
+    --------------------------------------------------------
+    -- DETERMINE NEXT SLOT
+    --------------------------------------------------------
+
+    local slot =
+        #caravan.cards + 1
+
+
+    --------------------------------------------------------
+    -- FIRST CARD ESTABLISHES SUIT
+    --------------------------------------------------------
+
+    if #caravan.cards == 0 then
+
+        caravan.suit =
+            card.suit
+
+    end
+
+
+    --------------------------------------------------------
+    -- SECOND CARD ESTABLISHES DIRECTION
+    --------------------------------------------------------
+
+    if #caravan.cards == 1 then
+
+        if card.rank >
+           caravan.cards[1].rank then
+
+            caravan.direction =
+                "ascending"
+
+        else
+
+            caravan.direction =
+                "descending"
+
+        end
+
+    end
+
+
+    --------------------------------------------------------
+    -- STORE SLOT
+    --------------------------------------------------------
+
+    card.slot = slot
+
+
+    --------------------------------------------------------
+    -- ADD CARD
+    --------------------------------------------------------
+
+    table.insert(
+        caravan.cards,
+        card
+    )
+
+
+    --------------------------------------------------------
+    -- MOVE CARD TO ITS CARAVAN SLOT
+    --------------------------------------------------------
+
+    local position =
+        getCaravanSnapPosition(
+            caravanNumber,
+            player,
+            slot
+        )
+
+
+    if position then
+
+        card.object.setPositionSmooth(
+            position
+        )
+
+    end
+
+
+    --------------------------------------------------------
+    -- RECALCULATE
+    --------------------------------------------------------
+
+    updateCaravanValue(
+        caravanNumber,
+        player
+    )
+
+
+    return true
+
+end
+
+
+------------------------------------------------------------
+-- PRINT CARAVAN
+------------------------------------------------------------
+
+function printCaravan(
+    caravanNumber,
+    player
+)
+
+    local caravan =
+        GAME.caravans[caravanNumber][player]
+
+
+    print(
+        "Caravan " ..
+        caravanNumber ..
+        " / Player " ..
+        player
+    )
+
+
+    print(
+        "Value: " ..
+        caravan.value
+    )
+
+
+    print(
+        "Suit: " ..
+        tostring(caravan.suit)
+    )
+
+
+    print(
+        "Direction: " ..
+        tostring(caravan.direction)
+    )
+
+
+    local text = "Cards: "
+
+
+    for _, card in
+        ipairs(caravan.cards) do
+
+        text =
+            text ..
+            card.name ..
+            " "
+
+    end
+
+
+    print(text)
+
+end
+
+function testMove(
+    player,
+    caravanNumber,
+    cardOrGUID
+)
+
+    local cardObject
+
+
+    --------------------------------------------------------
+    -- ACCEPT EITHER AN OBJECT OR A GUID
+    --------------------------------------------------------
+
+    if type(cardOrGUID) == "string" then
+
+        cardObject =
+            getObjectFromGUID(cardOrGUID)
+
+    else
+
+        cardObject =
+            cardOrGUID
+
+    end
+
+
+    --------------------------------------------------------
+    -- CHECK OBJECT
+    --------------------------------------------------------
+
+    if not cardObject then
+
+        print(
+            "Could not find card."
+        )
+
+        return
+
+    end
+
+
+    --------------------------------------------------------
+    -- PARSE CARD
+    --------------------------------------------------------
+
+    local card, errorMessage =
+        parseCard(cardObject)
+
+
+    if not card then
+
+        print(
+            "CARD ERROR: " ..
+            errorMessage
+        )
+
+        return
+
+    end
+
+
+    --------------------------------------------------------
+    -- ATTEMPT MOVE
+    --------------------------------------------------------
+
+    print(
+        "Attempting to play " ..
+        card.name ..
+        " to Caravan " ..
+        caravanNumber
+    )
+
+
+    local valid, reason =
+        addCardToCaravan(
+            caravanNumber,
+            player,
+            card
+        )
+
+
+    --------------------------------------------------------
+    -- RESULT
+    --------------------------------------------------------
+
+    if valid then
+
+        print(
+            "LEGAL MOVE: " ..
+            card.name
+        )
+
+        printCaravan(
+            caravanNumber,
+            player
+        )
+
+    else
+
+        print(
+            "ILLEGAL MOVE: " ..
+            reason
+        )
+
+    end
+
+end
+
+function identifyCaravanZone(zone)
+
+    for caravan = 1, 3 do
+
+        for player = 1, 2 do
+
+            if ZONES[caravan][player] == zone.getGUID() then
+
+                return caravan, player
+
+            end
+
+        end
+
+    end
+
+    return nil, nil
+
+end
+
+function onObjectEnterScriptingZone(zone, object)
+
+    local caravanNumber, player =
+        identifyCaravanZone(zone)
+
+    if not caravanNumber then
+        return
+    end
+
+    if not isCaravanCard(object) then
+        return
+    end
+
+    local guid = object.getGUID()
+
+    -- Don't process the same card twice.
+    if GAME.processing[guid] then
+        return
+    end
+
+    if GAME.registeredCards[guid] then
+        return
+    end
+
+    GAME.processing[guid] = true
+
+    -- Give the player a moment to finish placing the card.
+    Wait.time(
+        function()
+
+            processCaravanCard(
+                zone,
+                object,
+                caravanNumber,
+                player
+            )
+
+        end,
+        0.05
+    )
+
+end
+
+
+function isCaravanCard(object)
+
+    if not object then
+        return false
+    end
+
+    -- Ignore decks.
+    if object.tag == "Deck" then
+        return false
+    end
+
+    -- Ignore bags, counters, etc.
+    if object.tag ~= "Card" then
+        return false
+    end
+
+    -- Try to parse the card.
+    local card = parseCard(object)
+
+    if not card then
+        return false
+    end
+
+    return true
+
+end
+
+function processCaravanCard(
+    zone,
+    object,
+    caravanNumber,
+    player
+)
+
+    local guid = object.getGUID()
+
+    if GAME.gameOver then
+
+    rejectCard(
+        object,
+        caravanNumber,
+        player,
+        "The game is already over."
+    )
+
+    GAME.processing[object.getGUID()] = nil
+
+    return
+
+    end
+
+    --------------------------------------------------------
+    -- Make sure the object still exists.
+    --------------------------------------------------------
+
+    if not object then
+
+        GAME.processing[guid] = nil
+
+        return
+
+    end
+
+
+    --------------------------------------------------------
+    -- Make sure the card is STILL in this zone.
+    --------------------------------------------------------
+
+    local stillInZone = false
+
+    for _, zoneObject in
+        ipairs(zone.getObjects()) do
+
+        if zoneObject.getGUID() == guid then
+
+            stillInZone = true
+
+            break
+
+        end
+
+    end
+
+
+    if not stillInZone then
+
+        GAME.processing[guid] = nil
+
+        return
+
+    end
+
+
+    --------------------------------------------------------
+    -- Parse card.
+    --------------------------------------------------------
+
+    local card, errorMessage =
+        parseCard(object)
+
+
+    if not card then
+
+        GAME.processing[guid] = nil
+
+        return
+
+    end
+
+
+    --------------------------------------------------------
+    -- Currently only numerical cards & Queens.
+    --------------------------------------------------------
+    --------------------------------------------------------
+-- KING TEST
+--------------------------------------------------------
+
+if card.type == "king" then
+
+    local target =
+        findNumberCardAtPosition(
+            caravanNumber,
+            player,
+            object.getPosition()
+        )
+
+
+    if target then
+
+        print(
+            "[CARAVAN] KING TARGET FOUND: " ..
+            card.name ..
+            " → " ..
+            target.name ..
+            " (slot " ..
+            tostring(target.slot) ..
+            ")"
+        )
+
+    else
+
+        print(
+            "[CARAVAN] KING TARGET NOT FOUND."
+        )
+
+    end
+
+
+    ----------------------------------------------------
+    -- IMPORTANT:
+    -- Do not add the King to the caravan yet.
+    -- Do not modify its value yet.
+    ----------------------------------------------------
+
+    GAME.processing[guid] = nil
+
+    return
+
+end
+
+    if card.type == "queen" then
+
+    local valid, reason =
+        addQueenToCaravan(
+            caravanNumber,
+            player,
+            card
+        )
+
+    if valid then
+
+        GAME.registeredCards[guid] = {
+            caravan = caravanNumber,
+            player = player
+        }
+
+        GAME.processing[guid] = nil
+
+        print(
+            "[CARAVAN] LEGAL QUEEN: " ..
+            card.name ..
+            " → Player " ..
+            player ..
+            ", Caravan " ..
+            caravanNumber
+        )
+
+        printCaravan(
+            caravanNumber,
+            player
+        )
+
+    else
+
+        rejectCard(
+            object,
+            caravanNumber,
+            player,
+            reason
+        )
+
+        GAME.processing[guid] = nil
+
+    end
+
+    return
+
+end
+
+
+
+if card.type ~= "number" then
+
+    rejectCard(
+        object,
+        caravanNumber,
+        player,
+        "This card type is not implemented yet."
+    )
+
+    GAME.processing[guid] = nil
+
+    return
+
+end
+
+
+    --------------------------------------------------------
+    -- Attempt to add card.
+    --------------------------------------------------------
+
+    local valid, reason =
+        addCardToCaravan(
+            caravanNumber,
+            player,
+            card
+        )
+
+
+    if valid then
+
+        ----------------------------------------------------
+        -- LEGAL
+        ----------------------------------------------------
+
+        GAME.registeredCards[guid] = {
+            caravan = caravanNumber,
+            player = player
+        }
+
+        GAME.processing[guid] = nil
+
+        print(
+            "[CARAVAN] LEGAL: " ..
+            card.name ..
+            " → Player " ..
+            player ..
+            ", Caravan " ..
+            caravanNumber
+        )
+
+        printCaravan(
+            caravanNumber,
+            player
+        )
+
+
+    else
+
+        ----------------------------------------------------
+        -- ILLEGAL
+        ----------------------------------------------------
+
+        rejectCard(
+            object,
+            caravanNumber,
+            player,
+            reason
+        )
+
+        GAME.processing[guid] = nil
+
+    end
+
+end
+
+function rejectCard(
+    object,
+    caravanNumber,
+    player,
+    reason
+)
+
+    print(
+        "[CARAVAN] ILLEGAL MOVE: " ..
+        reason
+    )
+
+
+    -- Move the card slightly outside the caravan.
+    local zone =
+        getObjectFromGUID(
+            ZONES[caravanNumber][player]
+        )
+
+
+    if zone then
+
+        local zonePosition =
+            zone.getPosition()
+
+        object.setPositionSmooth({
+            x = zonePosition.x,
+            y = zonePosition.y + 1,
+            z = zonePosition.z + 2
+        })
+
+    end
+
+end
+
+function getCaravanStatus(value)
+
+    if value == 0 then
+        return "empty"
+    end
+
+    if value >= 21 and value <= 26 then
+        return "sold"
+    end
+
+    if value > 26 then
+        return "overloaded"
+    end
+
+    return "building"
+
+end
+
+function updateCaravanAppearance(
+    caravanNumber,
+    player
+)
+
+    local caravan =
+        GAME.caravans[caravanNumber][player]
+
+    local counter =
+        getCounter(
+            caravanNumber,
+            player
+        )
+
+    if not counter then
+        return
+    end
+
+
+    if caravan.status == "overloaded" then
+
+        -- Red = overloaded
+        counter.setColorTint({
+            r = 1,
+            g = 0.2,
+            b = 0.2
+        })
+
+
+    elseif caravan.status == "sold" then
+
+        -- Green = currently in winning range
+        counter.setColorTint({
+            r = 0.3,
+            g = 1,
+            b = 0.3
+        })
+
+
+    else
+
+        -- Normal
+        counter.setColorTint({
+            r = 1,
+            g = 1,
+            b = 1
+        })
+
+    end
+
+end
+
+function getLaneWinner(caravanNumber)
+
+    local p1 =
+        GAME.caravans[caravanNumber][1]
+
+    local p2 =
+        GAME.caravans[caravanNumber][2]
+
+
+    --------------------------------------------------------
+    -- Neither caravan is in selling range.
+    --------------------------------------------------------
+
+    if p1.status ~= "sold"
+       and p2.status ~= "sold" then
+
+        return nil
+
+    end
+
+
+    --------------------------------------------------------
+    -- P1 is sold, P2 isn't.
+    --------------------------------------------------------
+
+    if p1.status == "sold"
+       and p2.status ~= "sold" then
+
+        return 1
+
+    end
+
+
+    --------------------------------------------------------
+    -- P2 is sold, P1 isn't.
+    --------------------------------------------------------
+
+    if p2.status == "sold"
+       and p1.status ~= "sold" then
+
+        return 2
+
+    end
+
+
+    --------------------------------------------------------
+    -- Both are in range.
+    -- Higher value wins.
+    --------------------------------------------------------
+
+    if p1.value > p2.value then
+
+        return 1
+
+    elseif p2.value > p1.value then
+
+        return 2
+
+    end
+
+
+    --------------------------------------------------------
+    -- Same value = contested.
+    --------------------------------------------------------
+
+    return nil
+
+end
+
+function checkWinner()
+
+    if GAME.gameOver then
+        return
+    end
+
+
+    local wins = {
+        [1] = 0,
+        [2] = 0
+    }
+
+
+    --------------------------------------------------------
+    -- Check all three lanes.
+    --------------------------------------------------------
+
+    for caravan = 1, 3 do
+
+        local winner =
+            getLaneWinner(caravan)
+
+        if winner then
+
+            wins[winner] =
+                wins[winner] + 1
+
+        end
+
+    end
+
+
+    --------------------------------------------------------
+    -- Nobody has two lanes yet.
+    --------------------------------------------------------
+
+    if wins[1] < 2
+       and wins[2] < 2 then
+
+        return
+
+    end
+
+
+    --------------------------------------------------------
+    -- Game over.
+    --------------------------------------------------------
+
+    GAME.gameOver = true
+
+
+    local winner
+
+    if wins[1] >= 2 then
+
+        winner = 1
+
+    else
+
+        winner = 2
+
+    end
+
+
+    announceWinner(
+        winner,
+        wins[1],
+        wins[2]
+    )
+
+end
+
+function announceWinner(
+    winner,
+    p1Wins,
+    p2Wins
+)
+
+    local color
+
+    if winner == 1 then
+        color = "Blue"
+    else
+        color = "Red"
+    end
+
+
+    broadcastToAll(
+        "CARAVAN GAME OVER!\n" ..
+        color ..
+        " wins " ..
+        math.max(p1Wins, p2Wins) ..
+        " caravans!",
+        {
+            1,
+            0.8,
+            0.2
+        }
+    )
+
+
+    print(
+        "================================"
+    )
+
+    print(
+        "CARAVAN GAME OVER"
+    )
+
+    print(
+        "Player 1 wins: " ..
+        p1Wins
+    )
+
+    print(
+        "Player 2 wins: " ..
+        p2Wins
+    )
+
+    print(
+        "Winner: Player " ..
+        winner
+    )
+
+    print(
+        "================================"
+    )
+
+end
+
+function resetCaravanState()
+
+    print("[CARAVAN] Resetting caravan state...")
+
+    for caravanNumber = 1, 3 do
+
+        for player = 1, 2 do
+
+            local caravan =
+                GAME.caravans[caravanNumber][player]
+
+            caravan.cards = {}
+            caravan.suit = nil
+            caravan.direction = nil
+            caravan.value = 0
+            caravan.status = "empty"
+
+            updateCounter(
+                caravanNumber,
+                player
+            )
+
+            updateCaravanAppearance(
+                caravanNumber,
+                player
+            )
+
+        end
+
+    end
+
+    print("[CARAVAN] Caravan state reset.")
+
+end
+
+function onChat(message, player)
+
+    if message == "!resetcaravan" then
+
+        resetCaravanState()
+
+        broadcastToAll(
+            "Caravan counters and script state reset.",
+            {1, 1, 1}
+        )
+
+    end
+
+end
+
+------------------------------------------------------------
+-- ADD QUEEN TO CARAVAN
+------------------------------------------------------------
+
+function addQueenToCaravan(
+    caravanNumber,
+    player,
+    card
+)
+
+    local caravan =
+        GAME.caravans[caravanNumber][player]
+
+
+    if not caravan then
+
+        return false,
+            "Caravan does not exist."
+
+    end
+
+
+    --------------------------------------------------------
+    -- A Queen cannot be the first card.
+    --------------------------------------------------------
+
+    if #caravan.cards == 0 then
+
+        return false,
+            "A Queen cannot be played on an empty caravan."
+
+    end
+
+
+    --------------------------------------------------------
+    -- DETERMINE NEXT SLOT
+    --------------------------------------------------------
+
+    local slot =
+        #caravan.cards + 1
+
+
+    --------------------------------------------------------
+    -- QUEEN GETS A SLOT
+    --
+    -- But it does NOT target another card.
+    --------------------------------------------------------
+
+    card.slot = slot
+
+
+    --------------------------------------------------------
+    -- ADD QUEEN TO CARAVAN
+    --------------------------------------------------------
+
+    table.insert(
+        caravan.cards,
+        card
+    )
+
+
+    --------------------------------------------------------
+    -- MOVE QUEEN TO ITS CARAVAN SLOT
+    --------------------------------------------------------
+
+    local position =
+        getCaravanSnapPosition(
+            caravanNumber,
+            player,
+            slot
+        )
+
+
+    if position then
+
+        card.object.setPositionSmooth(
+            position
+        )
+
+    end
+
+
+    --------------------------------------------------------
+    -- QUEEN CHANGES CARAVAN SUIT
+    --------------------------------------------------------
+
+    caravan.suit =
+        card.suit
+
+
+    --------------------------------------------------------
+    -- QUEEN REVERSES CARAVAN DIRECTION
+    --------------------------------------------------------
+
+    if caravan.direction == "ascending" then
+
+        caravan.direction =
+            "descending"
+
+    elseif caravan.direction == "descending" then
+
+        caravan.direction =
+            "ascending"
+
+    end
+
+
+    --------------------------------------------------------
+    -- RECALCULATE CARAVAN
+    --------------------------------------------------------
+
+    updateCaravanValue(
+        caravanNumber,
+        player
+    )
+
+
+    return true
+
+end
+
+function testCaravanCounterPositions()
+
+    print("========== COUNTER POSITIONS ==========")
+
+    for caravanNumber = 1, 3 do
+
+        for player = 1, 2 do
+
+            local guid =
+                COUNTERS[caravanNumber][player]
+
+            local counter =
+                getObjectFromGUID(guid)
+
+
+            if counter then
+
+                local pos =
+                    counter.getPosition()
+
+                local rot =
+                    counter.getRotation()
+
+
+                print(
+                    "Caravan " ..
+                    caravanNumber ..
+                    " / Player " ..
+                    player ..
+                    " | GUID " ..
+                    guid
+                )
+
+                print(
+                    "  Position: " ..
+                    string.format(
+                        "X %.3f / Y %.3f / Z %.3f",
+                        pos.x,
+                        pos.y,
+                        pos.z
+                    )
+                )
+
+                print(
+                    "  Rotation: " ..
+                    string.format(
+                        "X %.1f / Y %.1f / Z %.1f",
+                        rot.x,
+                        rot.y,
+                        rot.z
+                    )
+                )
+
+            else
+
+                print(
+                    "ERROR: Counter not found: " ..
+                    guid
+                )
+
+            end
+
+        end
+
+    end
+
+    print("========================================")
+
+end
+
+------------------------------------------------------------
+-- GENERATE CARAVAN SNAP POINTS
+------------------------------------------------------------
+
+function generateCaravanSnapPoints()
+
+    local snapPoints = {}
+
+
+    --------------------------------------------------------
+    -- THREE CARAVANS
+    --------------------------------------------------------
+
+    for caravanNumber = 1, 3 do
+
+
+        ----------------------------------------------------
+        -- TWO PLAYERS
+        ----------------------------------------------------
+
+        for player = 1, 2 do
+
+            local counterGUID =
+                COUNTERS[caravanNumber][player]
+
+            local counter =
+                getObjectFromGUID(counterGUID)
+
+
+            if counter == nil then
+
+                print(
+                    "ERROR: Counter not found: " ..
+                    counterGUID
+                )
+
+            else
+
+                local counterPosition =
+                    counter.getPosition()
+
+
+                ------------------------------------------------
+                -- Select player's layout
+                ------------------------------------------------
+
+                local offsetX
+                local offsetZ
+                local spacing
+
+
+                if player == 1 then
+
+                    offsetX =
+                        P1_SNAP_OFFSET_X
+
+                    offsetZ =
+                        P1_SNAP_OFFSET_Z
+
+                    spacing =
+                        P1_SNAP_SPACING
+
+                else
+
+                    offsetX =
+                        P2_SNAP_OFFSET_X
+
+                    offsetZ =
+                        P2_SNAP_OFFSET_Z
+
+                    spacing =
+                        P2_SNAP_SPACING
+
+                end
+
+
+                ------------------------------------------------
+                -- Generate 10 positions
+                ------------------------------------------------
+
+                for slot = 0, SNAP_COUNT - 1 do
+
+                    local x =
+                        counterPosition.x +
+                        offsetX
+
+                    local z =
+                        counterPosition.z +
+                        offsetZ +
+                        (spacing * slot)
+
+
+                    table.insert(
+                        snapPoints,
+                        {
+                            position = {
+                                x,
+                                0,
+                                z
+                            }
+                        }
+                    )
+
+                end
+
+            end
+
+        end
+
+    end
+
+
+    --------------------------------------------------------
+    -- Apply all snap points
+    --------------------------------------------------------
+
+    Global.setSnapPoints(snapPoints)
+
+
+    print(
+        "[CARAVAN] Generated " ..
+        #snapPoints ..
+        " snap points."
+    )
+
+end
+
+------------------------------------------------------------
+-- GET NEXT CARAVAN SLOT
+------------------------------------------------------------
+
+function getNextCaravanSlot(caravan)
+
+    if not caravan or not caravan.cards then
+        return 1
+    end
+
+    return #caravan.cards + 1
+
+end
