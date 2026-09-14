@@ -1623,7 +1623,6 @@ function processCaravanCard(
 
     return
 
-end
 
 
 
@@ -1730,7 +1729,7 @@ end
     -- Only number cards can be added normally
     --------------------------------------------------------
 
-if card.type ~= "number" then
+    if card.type ~= "number" then
 
     rejectCard(
         object,
@@ -1743,7 +1742,7 @@ if card.type ~= "number" then
 
     return
 
-end
+    end
 
 
     --------------------------------------------------------
