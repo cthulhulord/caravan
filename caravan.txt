@@ -9,6 +9,16 @@
 
 -- Replace these with the GUIDs of your Counter objects.
 COUNTERS = {
+
+-- Discard pile GUID (unified for both players)
+DISCARD_PILE_GUID = "1ffcff"
+
+-- Hand zones for returning rejected cards
+-- Replace with actual GUIDs of your hand scripting zones
+HAND_ZONES = {
+    [1] = "",  -- Player 1 hand zone GUID
+    [2] = ""   -- Player 2 hand zone GUID
+}
     [1] = {
         [1] = "7efe1d",
         [2] = "cf6d1f"
@@ -551,19 +561,12 @@ function sendCardToDiscard(cardObject, player)
         return
     end
     
-    -- For now, use a fixed offset from the caravan zones
-    -- In a real setup, you'd want dedicated discard zone objects
-    local zoneGUID = ZONES[1][player]  -- Use first caravan zone as reference
-    local zone = getObjectFromGUID(zoneGUID)
+    -- Use the dedicated discard pile object
+    local discardPile = getObjectFromGUID(DISCARD_PILE_GUID)
     
-    if zone then
-        local zonePos = zone.getPosition()
-        local discardPos = {
-            x = zonePos.x + DISCARD_OFFSET_X,
-            y = DISCARD_CARD_Y,
-            z = zonePos.z + DISCARD_OFFSET_Z
-        }
-        
+    if discardPile then
+        local discardPos = discardPile.getPosition()
+        discardPos.y = discardPos.y + 0.5  -- Slightly above the pile
         cardObject.setPositionSmooth(discardPos)
         
         -- Track in discard pile
@@ -573,9 +576,22 @@ function sendCardToDiscard(cardObject, player)
         end
         table.insert(DISCARD_PILES[player], guid)
         
-        print("[CARAVAN] Card sent to Player " .. player .. " discard pile: " .. cardObject.getName())
+        print("[CARAVAN] Card sent to discard pile: " .. cardObject.getName())
     else
-        print("[CARAVAN] WARNING: Could not find reference zone for discard pile")
+        print("[CARAVAN] WARNING: Could not find discard pile object with GUID: " .. DISCARD_PILE_GUID)
+        
+        -- Fallback to offset from caravan zone
+        local zoneGUID = ZONES[1][player]
+        local zone = getObjectFromGUID(zoneGUID)
+        if zone then
+            local zonePos = zone.getPosition()
+            local discardPos = {
+                x = zonePos.x + DISCARD_OFFSET_X,
+                y = DISCARD_CARD_Y,
+                z = zonePos.z + DISCARD_OFFSET_Z
+            }
+            cardObject.setPositionSmooth(discardPos)
+        end
     end
 end
 
@@ -1825,26 +1841,8 @@ function rejectCard(
         reason
     )
 
-
-    -- Move the card slightly outside the caravan.
-    local zone =
-        getObjectFromGUID(
-            ZONES[caravanNumber][player]
-        )
-
-
-    if zone then
-
-        local zonePosition =
-            zone.getPosition()
-
-        object.setPositionSmooth({
-            x = zonePosition.x,
-            y = zonePosition.y + 1,
-            z = zonePosition.z + 2
-        })
-
-    end
+    -- Return the card to the player's hand
+    returnToHand(object, player)
 
 end
 
