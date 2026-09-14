@@ -73,25 +73,12 @@ local DISCARD_CARD_Y = 1.5
 -- Key: player number, Value: table of card GUIDs in discard
 DISCARD_PILES = {
     [1] = {},
+    [2] = {}
+}
 
 -- Discard pile GUID (unified for both players)
 DISCARD_PILE_GUID = "1ffcff"
 
--- Hand zones for returning rejected cards
--- Replace with actual GUIDs of your hand scripting zones
-    [2] = {}
-}
-
--- Player 1
-local P1_SNAP_OFFSET_X = 2.0
-local P1_SNAP_OFFSET_Z = -1.0
-local P1_SNAP_SPACING = -1.25
-
--- Player 2
-local P2_SNAP_OFFSET_X = 2.0
-local P2_SNAP_OFFSET_Z = 1.0
-local P2_SNAP_SPACING = 1.25
-------------------------------------------------------------
 -- GAME STATE
 ------------------------------------------------------------
 
