@@ -63,6 +63,16 @@ local CARAVAN_CARD_Y = 2.0
 local ATTACHMENT_Y_OFFSET = 0.3  -- Secondary snap points are 0.3 units above primary
 local SECONDARY_SNAP_Y = CARAVAN_CARD_Y + ATTACHMENT_Y_OFFSET
 
+-- Player 1 snap point offsets and spacing
+local P1_SNAP_OFFSET_X = 0
+local P1_SNAP_OFFSET_Z = 0
+local P1_SNAP_SPACING = 1.0
+
+-- Player 2 snap point offsets and spacing
+local P2_SNAP_OFFSET_X = 0
+local P2_SNAP_OFFSET_Z = 0
+local P2_SNAP_SPACING = 1.0
+
 -- Discard pile positions (relative to caravan zones)
 -- These are where Jacks, Jokers, and removed cards go
 local DISCARD_OFFSET_X = 0
@@ -982,38 +992,14 @@ function getCaravanSnapPosition(
     local offsetZ
     local spacing
 
-
-    --------------------------------------------------------
-    -- PLAYER 1
-    --------------------------------------------------------
-
     if player == 1 then
-
-        offsetX =
-            P1_SNAP_OFFSET_X
-
-        offsetZ =
-            P1_SNAP_OFFSET_Z
-
-        spacing =
-            P1_SNAP_SPACING
-
-
-    --------------------------------------------------------
-    -- PLAYER 2
-    --------------------------------------------------------
-
+        offsetX = P1_SNAP_OFFSET_X
+        offsetZ = P1_SNAP_OFFSET_Z
+        spacing = P1_SNAP_SPACING
     else
-
-        offsetX =
-            P2_SNAP_OFFSET_X
-
-        offsetZ =
-            P2_SNAP_OFFSET_Z
-
-        spacing =
-            P2_SNAP_SPACING
-
+        offsetX = P2_SNAP_OFFSET_X
+        offsetZ = P2_SNAP_OFFSET_Z
+        spacing = P2_SNAP_SPACING
     end
 
 
@@ -2412,27 +2398,13 @@ function generateCaravanSnapPoints()
 
 
                 if player == 1 then
-
-                    offsetX =
-                        P1_SNAP_OFFSET_X
-
-                    offsetZ =
-                        P1_SNAP_OFFSET_Z
-
-                    spacing =
-                        P1_SNAP_SPACING
-
+                    offsetX = P1_SNAP_OFFSET_X
+                    offsetZ = P1_SNAP_OFFSET_Z
+                    spacing = P1_SNAP_SPACING
                 else
-
-                    offsetX =
-                        P2_SNAP_OFFSET_X
-
-                    offsetZ =
-                        P2_SNAP_OFFSET_Z
-
-                    spacing =
-                        P2_SNAP_SPACING
-
+                    offsetX = P2_SNAP_OFFSET_X
+                    offsetZ = P2_SNAP_OFFSET_Z
+                    spacing = P2_SNAP_SPACING
                 end
 
 
@@ -2442,14 +2414,9 @@ function generateCaravanSnapPoints()
 
                 for slot = 0, SNAP_COUNT - 1 do
 
-                    local x =
-                        counterPosition.x +
-                        offsetX
+                    local x = counterPosition.x + offsetX
 
-                    local z =
-                        counterPosition.z +
-                        offsetZ +
-                        (spacing * slot)
+                    local z = counterPosition.z + offsetZ + (spacing * slot)
 
 
                     table.insert(
@@ -2462,22 +2429,22 @@ function generateCaravanSnapPoints()
                             }
                         }
                     )
-                -- Create secondary snap point above this primary point
-                table.insert(
-                    snapPoints,
-                    {
-                        position = {
-                            x,
-                            SECONDARY_SNAP_Y,
-                            z
-                        },
-                        -- Store metadata for identifying this as a secondary point
-                        caravan = caravanNumber,
-                        player = player,
-                        slot = slot + 1,
-                        isSecondary = true
-                    }
-                )
+                    -- Create secondary snap point above this primary point
+                    table.insert(
+                        snapPoints,
+                        {
+                            position = {
+                                x,
+                                SECONDARY_SNAP_Y,
+                                z
+                            },
+                            -- Store metadata for identifying this as a secondary point
+                            caravan = caravanNumber,
+                            player = player,
+                            slot = slot + 1,
+                            isSecondary = true
+                        }
+                    )
 
 
                 end
