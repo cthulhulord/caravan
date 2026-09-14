@@ -64,14 +64,14 @@ local ATTACHMENT_Y_OFFSET = 0.3  -- Secondary snap points are 0.3 units above pr
 local SECONDARY_SNAP_Y = CARAVAN_CARD_Y + ATTACHMENT_Y_OFFSET
 
 -- Player 1 snap point offsets and spacing
-local P1_SNAP_OFFSET_X = 0
-local P1_SNAP_OFFSET_Z = 0
-local P1_SNAP_SPACING = 1.0
+local P1_SNAP_OFFSET_X = 2.0
+local P1_SNAP_OFFSET_Z = -1.0
+local P1_SNAP_SPACING = -1.25
 
 -- Player 2 snap point offsets and spacing
-local P2_SNAP_OFFSET_X = 0
-local P2_SNAP_OFFSET_Z = 0
-local P2_SNAP_SPACING = 1.0
+local P2_SNAP_OFFSET_X = 2.0
+local P2_SNAP_OFFSET_Z = 1.0
+local P2_SNAP_SPACING = 1.25
 
 -- Discard pile positions (relative to caravan zones)
 -- These are where Jacks, Jokers, and removed cards go
@@ -1577,20 +1577,18 @@ function processCaravanCard(
     end
 
     if card.type == "queen" then
-
-    local valid, reason =
+        local valid, reason =
         addQueenToCaravan(
             caravanNumber,
             player,
             card
         )
 
-    if valid then
-
-        GAME.registeredCards[guid] = {
-            caravan = caravanNumber,
-            player = player
-        }
+        if valid then
+            GAME.registeredCards[guid] = {
+                caravan = caravanNumber,
+                player = player
+            }
 
         GAME.processing[guid] = nil
 
@@ -1607,6 +1605,8 @@ function processCaravanCard(
             caravanNumber,
             player
         )
+
+        GAME.processing[guid] = nil
 
     else
 
@@ -1625,9 +1625,6 @@ function processCaravanCard(
 
 end
 
-
-
-    end
 
 
     --------------------------------------------------------
