@@ -50,7 +50,21 @@ ZONES = {
 
 local SNAP_COUNT = 10
 local CARAVAN_CARD_Y = 2.0
-local ATTACHMENT_Y_OFFSET = 0.3  -- Kings are placed 0.3 units above their base card
+local ATTACHMENT_Y_OFFSET = 0.3  -- Secondary snap points are 0.3 units above primary
+local SECONDARY_SNAP_Y = CARAVAN_CARD_Y + ATTACHMENT_Y_OFFSET
+
+-- Discard pile positions (relative to caravan zones)
+-- These are where Jacks, Jokers, and removed cards go
+local DISCARD_OFFSET_X = 0
+local DISCARD_OFFSET_Z = -3.0  -- 3 units below the caravan zone
+local DISCARD_CARD_Y = 1.5
+
+-- Track discard piles for each player
+-- Key: player number, Value: table of card GUIDs in discard
+DISCARD_PILES = {
+    [1] = {},
+    [2] = {}
+}
 
 -- Player 1
 local P1_SNAP_OFFSET_X = 2.0
@@ -118,6 +132,12 @@ function initializeGame()
     GAME.gameOver = false
 
     GAME.attachedKings = {}
+
+    -- Initialize discard piles
+    DISCARD_PILES = {
+        [1] = {},
+        [2] = {}
+    }
 
     for caravan = 1, 3 do
 
@@ -450,6 +470,117 @@ function findNumberCardAtPosition(caravanNumber, player, position)
     
     return nil
 end
+
+
+------------------------------------------------------------
+-- FIND NUMBER CARD BY SLOT
+-- Returns the number card at a specific slot in a caravan
+------------------------------------------------------------
+
+function findNumberCardBySlot(caravanNumber, player, slot)
+    local caravan = GAME.caravans[caravanNumber][player]
+    
+    for _, card in ipairs(caravan.cards) do
+        if card.type == "number" and card.slot == slot then
+            return card
+        end
+    end
+    
+    return nil
+end
+
+
+------------------------------------------------------------
+-- GET SLOT FROM POSITION
+-- Determines which slot a position corresponds to in a caravan
+------------------------------------------------------------
+
+function getSlotFromPosition(caravanNumber, player, position)
+    local counter = getCounter(caravanNumber, player)
+    if not counter then
+        return nil
+    end
+    
+    local counterPos = counter.getPosition()
+    local threshold = 1.0 -- Distance threshold for slot matching
+    
+    -- Calculate expected positions for each slot
+    local offsetX, offsetZ, spacing
+    if player == 1 then
+        offsetX = P1_SNAP_OFFSET_X
+        offsetZ = P1_SNAP_OFFSET_Z
+        spacing = P1_SNAP_SPACING
+    else
+        offsetX = P2_SNAP_OFFSET_X
+        offsetZ = P2_SNAP_OFFSET_Z
+        spacing = P2_SNAP_SPACING
+    end
+    
+    -- Check each slot position
+    for slot = 1, SNAP_COUNT do
+        local expectedX = counterPos.x + offsetX
+        local expectedZ = counterPos.z + offsetZ + (spacing * (slot - 1))
+        
+        local dist = math.sqrt(
+            math.pow(position.x - expectedX, 2) +
+            math.pow(position.z - expectedZ, 2)
+        )
+        
+        -- Also check at secondary snap point height
+        local distSecondary = math.sqrt(
+            math.pow(position.x - expectedX, 2) +
+            math.pow(position.y - SECONDARY_SNAP_Y, 2) +
+            math.pow(position.z - expectedZ, 2)
+        )
+        
+        if dist < threshold or distSecondary < threshold then
+            return slot
+        end
+    end
+    
+    return nil
+end
+
+
+------------------------------------------------------------
+-- SEND CARD TO DISCARD PILE
+------------------------------------------------------------
+
+function sendCardToDiscard(cardObject, player)
+    if not cardObject then
+        return
+    end
+    
+    -- For now, use a fixed offset from the caravan zones
+    -- In a real setup, you'd want dedicated discard zone objects
+    local zoneGUID = ZONES[1][player]  -- Use first caravan zone as reference
+    local zone = getObjectFromGUID(zoneGUID)
+    
+    if zone then
+        local zonePos = zone.getPosition()
+        local discardPos = {
+            x = zonePos.x + DISCARD_OFFSET_X,
+            y = DISCARD_CARD_Y,
+            z = zonePos.z + DISCARD_OFFSET_Z
+        }
+        
+        cardObject.setPositionSmooth(discardPos)
+        
+        -- Track in discard pile
+        local guid = cardObject.getGUID()
+        if not DISCARD_PILES[player] then
+            DISCARD_PILES[player] = {}
+        end
+        table.insert(DISCARD_PILES[player], guid)
+        
+        print("[CARAVAN] Card sent to Player " .. player .. " discard pile: " .. cardObject.getName())
+    else
+        print("[CARAVAN] WARNING: Could not find reference zone for discard pile")
+    end
+end
+
+
+
 
 
 ------------------------------------------------------------
@@ -1374,11 +1505,9 @@ function processCaravanCard(
 
     if card.type == "king" then
 
-        local target = findNumberCardAtPosition(
-            caravanNumber,
-            player,
-            object.getPosition()
-        )
+        -- Find which slot this secondary position corresponds to
+        local slot = getSlotFromPosition(caravanNumber, player, object.getPosition())
+        local target = findNumberCardBySlot(caravanNumber, player, slot)
 
         if not target then
             rejectCard(
@@ -1426,16 +1555,12 @@ function processCaravanCard(
             attachedTo = target.guid
         }
 
-        -- Position the King slightly above the target card
-        local targetObj = getObjectFromGUID(target.guid)
-        if targetObj then
-            local targetPos = targetObj.getPosition()
-            card.object.setPositionSmooth({
-                x = targetPos.x,
-                y = targetPos.y + 0.3,
-                z = targetPos.z
-            })
-        end
+        -- Position the King at the secondary snap point above the target
+        card.object.setPositionSmooth({
+            x = object.getPosition().x,
+            y = SECONDARY_SNAP_Y,
+            z = object.getPosition().z
+        })
 
         -- Update the caravan value
         updateCaravanValue(caravanNumber, player)
@@ -1516,11 +1641,9 @@ end
 
     if card.type == "jack" then
 
-        local target = findNumberCardAtPosition(
-            caravanNumber,
-            player,
-            object.getPosition()
-        )
+        -- Find which slot this secondary position corresponds to
+        local slot = getSlotFromPosition(caravanNumber, player, object.getPosition())
+        local target = findNumberCardBySlot(caravanNumber, player, slot)
 
         if not target then
             rejectCard(
@@ -1561,6 +1684,25 @@ end
             return
         end
 
+        -- Send the removed target card to discard pile
+        local targetObj = getObjectFromGUID(target.guid)
+        if targetObj then
+            sendCardToDiscard(targetObj, player)
+        end
+
+        -- Send any attached Kings to discard pile
+        if GAME.attachedKings and GAME.attachedKings[target.guid] then
+            for _, kingGuid in ipairs(GAME.attachedKings[target.guid]) do
+                local kingObj = getObjectFromGUID(kingGuid)
+                if kingObj then
+                    sendCardToDiscard(kingObj, player)
+                end
+            end
+        end
+
+        -- Send the Jack itself to discard pile after activation
+        sendCardToDiscard(card.object, player)
+
         -- Register the Jack (it was used to remove, so we track it)
         GAME.registeredCards[guid] = {
             caravan = caravanNumber,
@@ -1568,17 +1710,6 @@ end
             action = "removed",
             removedCard = target.guid
         }
-
-        -- Move Jack to a discard position near the caravan
-        local zone = getObjectFromGUID(ZONES[caravanNumber][player])
-        if zone then
-            local zonePos = zone.getPosition()
-            card.object.setPositionSmooth({
-                x = zonePos.x,
-                y = zonePos.y + 1,
-                z = zonePos.z - 2
-            })
-        end
 
         -- Update the caravan value
         updateCaravanValue(caravanNumber, player)
@@ -1590,7 +1721,10 @@ end
             target.name ..
             " (slot " ..
             tostring(target.slot) ..
-            ")"
+            ") from Player " ..
+            player ..
+            " caravan " ..
+            caravanNumber
         )
         printCaravan(caravanNumber, player)
 
@@ -2018,6 +2152,12 @@ function resetCaravanState()
     GAME.attachedKings = {}
     GAME.registeredCards = {}
 
+    -- Clear discard piles
+    DISCARD_PILES = {
+        [1] = {},
+        [2] = {}
+    }
+
     print("[CARAVAN] Caravan state reset.")
 
 end
@@ -2344,6 +2484,39 @@ function generateCaravanSnapPoints()
     --------------------------------------------------------
 
     --------------------------------------------------------
+
+    --------------------------------------------------------
+    -- Generate SECONDARY snap points for face cards (King, Jack, Joker)
+    -- These are positioned above each primary snap point
+    -- When a face card is placed on a secondary point, it targets the card below
+    --------------------------------------------------------
+
+    for caravanNumber = 1, 3 do
+        for player = 1, 2 do
+            for slot = 0, SNAP_COUNT - 1 do
+                local baseIndex = ((caravanNumber - 1) * 2 + (player - 1)) * SNAP_COUNT + slot + 1
+                
+                -- Create secondary snap point above each primary point
+                local secondaryIndex = #snapPoints + 1
+                table.insert(
+                    snapPoints,
+                    {
+                        position = {
+                            snapPoints[baseIndex].position[1],
+                            SECONDARY_SNAP_Y,
+                            snapPoints[baseIndex].position[3]
+                        },
+                        -- Store metadata for identifying this as a secondary point
+                        caravan = caravanNumber,
+                        player = player,
+                        slot = slot,
+                        isSecondary = true
+                    }
+                )
+            end
+        end
+    end
+
     Global.setSnapPoints(snapPoints)
 
 
