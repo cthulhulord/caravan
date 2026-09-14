@@ -9,6 +9,21 @@
 
 -- Replace these with the GUIDs of your Counter objects.
 COUNTERS = {
+    [1] = {
+        [1] = "7efe1d",
+        [2] = "cf6d1f",
+    },
+
+    [2] = {
+        [1] = "0907f1",
+        [2] = "3cb3f3",
+    },
+
+    [3] = {
+        [1] = "1a99df",
+        [2] = "d48df1",
+    }
+}
 
 -- Discard pile GUID (unified for both players)
 DISCARD_PILE_GUID = "1ffcff"
@@ -19,38 +34,23 @@ HAND_ZONES = {
     [1] = "6f7f4e",  -- Player 1 hand zone GUID
     [2] = "34eb6e"   -- Player 2 hand zone GUID
 }
-    [1] = {
-        [1] = "7efe1d",
-        [2] = "cf6d1f"
-    },
-
-    [2] = {
-        [1] = "0907f1",
-        [2] = "3cb3f3"
-    },
-
-    [3] = {
-        [1] = "1a99df",
-        [2] = "d48df1"
-    }
-}
 
 
 -- Replace these with the GUIDs of your scripting zones.
 ZONES = {
     [1] = {
         [1] = "a69049",
-        [2] = "d28abb"
+        [2] = "d28abb",
     },
 
     [2] = {
         [1] = "162387",
-        [2] = "002a5b"
+        [2] = "002a5b",
     },
 
     [3] = {
         [1] = "30f711",
-        [2] = "080c1e"
+        [2] = "080c1e",
     }
 }
 
@@ -73,6 +73,16 @@ local DISCARD_CARD_Y = 1.5
 -- Key: player number, Value: table of card GUIDs in discard
 DISCARD_PILES = {
     [1] = {},
+
+-- Discard pile GUID (unified for both players)
+DISCARD_PILE_GUID = "1ffcff"
+
+-- Hand zones for returning rejected cards
+-- Replace with actual GUIDs of your hand scripting zones
+HAND_ZONES = {
+    [1] = "6f7f4e",  -- Player 1 hand zone GUID
+    [2] = "34eb6e"   -- Player 2 hand zone GUID
+}
     [2] = {}
 }
 
@@ -2469,6 +2479,23 @@ function generateCaravanSnapPoints()
                             }
                         }
                     )
+                -- Create secondary snap point above this primary point
+                table.insert(
+                    snapPoints,
+                    {
+                        position = {
+                            x,
+                            SECONDARY_SNAP_Y,
+                            z
+                        },
+                        -- Store metadata for identifying this as a secondary point
+                        caravan = caravanNumber,
+                        player = player,
+                        slot = slot + 1,
+                        isSecondary = true
+                    }
+                )
+
 
                 end
 
@@ -2484,36 +2511,6 @@ function generateCaravanSnapPoints()
     --------------------------------------------------------
 
     --------------------------------------------------------
-    -- Generate SECONDARY snap points for face cards (King, Jack, Joker)
-    -- These are positioned above each primary snap point
-    -- When a face card is placed on a secondary point, it targets the card below
-    --------------------------------------------------------
-
-    for caravanNumber = 1, 3 do
-        for player = 1, 2 do
-            for slot = 0, SNAP_COUNT - 1 do
-                local baseIndex = ((caravanNumber - 1) * 2 + (player - 1)) * SNAP_COUNT + slot + 1
-                
-                -- Create secondary snap point above each primary point
-                local secondaryIndex = #snapPoints + 1
-                table.insert(
-                    snapPoints,
-                    {
-                        position = {
-                            snapPoints[baseIndex].position[1],
-                            SECONDARY_SNAP_Y,
-                            snapPoints[baseIndex].position[3]
-                        },
-                        -- Store metadata for identifying this as a secondary point
-                        caravan = caravanNumber,
-                        player = player,
-                        slot = slot,
-                        isSecondary = true
-                    }
-                )
-            end
-        end
-    end
 
     Global.setSnapPoints(snapPoints)
 
