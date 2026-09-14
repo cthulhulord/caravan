@@ -50,6 +50,7 @@ ZONES = {
 
 local SNAP_COUNT = 10
 local CARAVAN_CARD_Y = 2.0
+local ATTACHMENT_Y_OFFSET = 0.3  -- Kings are placed 0.3 units above their base card
 
 -- Player 1
 local P1_SNAP_OFFSET_X = 2.0
@@ -71,7 +72,11 @@ GAME = {
 
     registeredCards = {},
 
-    gameOver = false
+    gameOver = false,
+
+    -- Track attached Kings (Kings attached to number cards)
+    -- Key: guid of the base card, Value: table of attached King guids
+    attachedKings = {}
 }
 
 
@@ -111,6 +116,8 @@ function initializeGame()
     GAME.registeredCards = {}
 
     GAME.gameOver = false
+
+    GAME.attachedKings = {}
 
     for caravan = 1, 3 do
 
@@ -352,7 +359,9 @@ return {
 
     object = card,
 
-    name = name
+    name = name,
+
+    guid = nil  -- Will be set when card is registered
 }
 
 end
@@ -369,8 +378,9 @@ function calculateCaravanValue(caravan)
 
         if card.type == "number" then
 
-            total =
-                total + card.rank
+            -- Apply King multipliers attached to this card
+            local multiplier = getKingMultiplier(card)
+            total = total + (card.rank * multiplier)
 
         end
 
@@ -378,6 +388,156 @@ function calculateCaravanValue(caravan)
 
     return total
 
+end
+
+
+------------------------------------------------------------
+-- GET KING MULTIPLIER FOR A CARD
+------------------------------------------------------------
+
+function getKingMultiplier(card)
+
+    if not card or not card.guid then
+        return 1
+    end
+
+    local kings = GAME.attachedKings[card.guid]
+    if not kings or #kings == 0 then
+        return 1
+    end
+
+    -- Each King doubles the value: 1 King = x2, 2 Kings = x4, etc.
+    return math.pow(2, #kings)
+
+end
+
+
+
+------------------------------------------------------------
+-- FIND NUMBER CARD AT POSITION (for King attachment)
+------------------------------------------------------------
+
+function findNumberCardAtPosition(caravanNumber, player, position)
+    local caravan = GAME.caravans[caravanNumber][player]
+    
+    -- Get the counter position to calculate relative positions
+    local counter = getCounter(caravanNumber, player)
+    if not counter then
+        return nil
+    end
+    
+    local counterPos = counter.getPosition()
+    local threshold = 1.5 -- Distance threshold to consider a card "at" a position
+    
+    -- Check all cards in this caravan
+    for _, card in ipairs(caravan.cards) do
+        if card.type == "number" and card.guid then
+            local cardObj = getObjectFromGUID(card.guid)
+            if cardObj then
+                local cardPos = cardObj.getPosition()
+                local dist = math.sqrt(
+                    math.pow(cardPos.x - position.x, 2) +
+                    math.pow(cardPos.y - position.y, 2) +
+                    math.pow(cardPos.z - position.z, 2)
+                )
+                
+                if dist < threshold then
+                    return card
+                end
+            end
+        end
+    end
+    
+    return nil
+end
+
+
+------------------------------------------------------------
+-- ATTACH KING TO NUMBER CARD
+------------------------------------------------------------
+
+function attachKingToCard(baseCard, kingCard)
+    if not baseCard or not baseCard.guid then
+        return false, "Base card must have a guid"
+    end
+    
+    if not kingCard or not kingCard.guid then
+        return false, "King card must have a guid"
+    end
+    
+    -- Initialize the attached kings table for this base card if needed
+    if not GAME.attachedKings[baseCard.guid] then
+        GAME.attachedKings[baseCard.guid] = {}
+    end
+    
+    -- Add the king to the attachment list
+    table.insert(GAME.attachedKings[baseCard.guid], kingCard.guid)
+    
+    return true
+end
+
+
+------------------------------------------------------------
+-- REMOVE KING ATTACHMENTS FROM CARD
+------------------------------------------------------------
+
+function removeKingAttachments(baseCardGuid)
+    if not baseCardGuid then
+        return
+    end
+    
+    if GAME.attachedKings[baseCardGuid] then
+        GAME.attachedKings[baseCardGuid] = {}
+    end
+end
+
+
+------------------------------------------------------------
+-- REMOVE CARD AND ATTACHED KINGS FROM CARAVAN
+------------------------------------------------------------
+
+function removeCardAndAttachments(caravanNumber, player, cardToRemove)
+    if not cardToRemove or not cardToRemove.guid then
+        return false
+    end
+    
+    local caravan = GAME.caravans[caravanNumber][player]
+    
+    -- Remove the card from the caravan cards table
+    for i = #caravan.cards, 1, -1 do
+        if caravan.cards[i].guid == cardToRemove.guid then
+            table.remove(caravan.cards, i)
+            break
+        end
+    end
+    
+    -- Remove any Kings attached to this card
+    local attachedKings = GAME.attachedKings[cardToRemove.guid] or {}
+    
+    -- Remove each attached King from the caravan cards table
+    for _, kingGuid in ipairs(attachedKings) do
+        for i = #caravan.cards, 1, -1 do
+            if caravan.cards[i].guid == kingGuid then
+                table.remove(caravan.cards, i)
+                break
+            end
+        end
+    end
+    
+    -- Clean up the attachment tracking
+    removeKingAttachments(cardToRemove.guid)
+    
+    -- Remove from registered cards
+    GAME.registeredCards[cardToRemove.guid] = nil
+    
+    -- Remove any Kings that were attached to this card from registeredCards
+    if GAME.attachedKings[cardToRemove.guid] then
+        for _, kingGuid in ipairs(GAME.attachedKings[cardToRemove.guid]) do
+            GAME.registeredCards[kingGuid] = nil
+        end
+    end
+    
+    return true
 end
 
 
@@ -818,10 +978,11 @@ function addCardToCaravan(
 
 
     --------------------------------------------------------
-    -- STORE SLOT
+    -- STORE SLOT AND GUID
     --------------------------------------------------------
 
     card.slot = slot
+    card.guid = card.object.getGUID()
 
 
     --------------------------------------------------------
@@ -1212,52 +1373,92 @@ function processCaravanCard(
     --------------------------------------------------------
     -- Currently only numerical cards & Queens.
     --------------------------------------------------------
+    -- KING: Attach to a number card to double its value
     --------------------------------------------------------
--- KING TEST
---------------------------------------------------------
 
-if card.type == "king" then
+    if card.type == "king" then
 
-    local target =
-        findNumberCardAtPosition(
+        local target = findNumberCardAtPosition(
             caravanNumber,
             player,
             object.getPosition()
         )
 
+        if not target then
+            rejectCard(
+                object,
+                caravanNumber,
+                player,
+                "King must be placed on a number card (Ace-10), not on Queens or empty space."
+            )
+            GAME.processing[guid] = nil
+            return
+        end
 
-    if target then
+        -- Kings cannot be attached to Queens (only to number cards)
+        if target.type ~= "number" then
+            rejectCard(
+                object,
+                caravanNumber,
+                player,
+                "King must be placed on a number card (Ace-10), not on Queens."
+            )
+            GAME.processing[guid] = nil
+            return
+        end
+
+        -- Add guid to king card
+        card.guid = guid
+
+        -- Attach the King to the target card
+        local success, reason = attachKingToCard(target, card)
+        if not success then
+            rejectCard(
+                object,
+                caravanNumber,
+                player,
+                reason
+            )
+            GAME.processing[guid] = nil
+            return
+        end
+
+        -- Register the King
+        GAME.registeredCards[guid] = {
+            caravan = caravanNumber,
+            player = player,
+            attachedTo = target.guid
+        }
+
+        -- Position the King slightly above the target card
+        local targetObj = getObjectFromGUID(target.guid)
+        if targetObj then
+            local targetPos = targetObj.getPosition()
+            card.object.setPositionSmooth({
+                x = targetPos.x,
+                y = targetPos.y + 0.3,
+                z = targetPos.z
+            })
+        end
+
+        -- Update the caravan value
+        updateCaravanValue(caravanNumber, player)
 
         print(
-            "[CARAVAN] KING TARGET FOUND: " ..
+            "[CARAVAN] KING ATTACHED: " ..
             card.name ..
-            " → " ..
+            " -> " ..
             target.name ..
             " (slot " ..
             tostring(target.slot) ..
             ")"
         )
+        printCaravan(caravanNumber, player)
 
-    else
-
-        print(
-            "[CARAVAN] KING TARGET NOT FOUND."
-        )
+        GAME.processing[guid] = nil
+        return
 
     end
-
-
-    ----------------------------------------------------
-    -- IMPORTANT:
-    -- Do not add the King to the caravan yet.
-    -- Do not modify its value yet.
-    ----------------------------------------------------
-
-    GAME.processing[guid] = nil
-
-    return
-
-end
 
     if card.type == "queen" then
 
@@ -1720,6 +1921,10 @@ function resetCaravanState()
 
     end
 
+    -- Clear all attachment tracking
+    GAME.attachedKings = {}
+    GAME.registeredCards = {}
+
     print("[CARAVAN] Caravan state reset.")
 
 end
@@ -1782,12 +1987,13 @@ function addQueenToCaravan(
 
 
     --------------------------------------------------------
-    -- QUEEN GETS A SLOT
+    -- QUEEN GETS A SLOT AND GUID
     --
     -- But it does NOT target another card.
     --------------------------------------------------------
 
     card.slot = slot
+    card.guid = card.object.getGUID()
 
 
     --------------------------------------------------------
@@ -2045,6 +2251,30 @@ function generateCaravanSnapPoints()
     --------------------------------------------------------
     -- Apply all snap points
     --------------------------------------------------------
+
+
+                --------------------------------------------------------
+                -- Generate attachment snap points for Kings
+                -- These are positioned above each base snap point
+                --------------------------------------------------------
+
+                for slot = 0, SNAP_COUNT - 1 do
+                    local baseIndex = ((caravanNumber - 1) * 2 + (player - 1)) * SNAP_COUNT + slot + 1
+                    
+                    if snapPoints[baseIndex] then
+                        -- Create attachment point above the base point
+                        table.insert(
+                            snapPoints,
+                            {
+                                position = {
+                                    snapPoints[baseIndex].position[1],
+                                    CARAVAN_CARD_Y + ATTACHMENT_Y_OFFSET,
+                                    snapPoints[baseIndex].position[3]
+                                }
+                            }
+                        )
+                    end
+                end
 
     Global.setSnapPoints(snapPoints)
 
