@@ -79,10 +79,6 @@ DISCARD_PILE_GUID = "1ffcff"
 
 -- Hand zones for returning rejected cards
 -- Replace with actual GUIDs of your hand scripting zones
-HAND_ZONES = {
-    [1] = "6f7f4e",  -- Player 1 hand zone GUID
-    [2] = "34eb6e"   -- Player 2 hand zone GUID
-}
     [2] = {}
 }
 
