@@ -1307,10 +1307,6 @@ function processCaravanCard(
 
     GAME.processing[object.getGUID()] = nil
 
-    return
-
-    end
-
     --------------------------------------------------------
     -- Make sure the object still exists.
     --------------------------------------------------------
@@ -1510,6 +1506,103 @@ function processCaravanCard(
 end
 
 
+
+    end
+
+
+    --------------------------------------------------------
+    -- JACK: Remove target number card and any attached Kings
+    --------------------------------------------------------
+
+    if card.type == "jack" then
+
+        local target = findNumberCardAtPosition(
+            caravanNumber,
+            player,
+            object.getPosition()
+        )
+
+        if not target then
+            rejectCard(
+                object,
+                caravanNumber,
+                player,
+                "Jack must be placed on a number card (Ace-10)."
+            )
+            GAME.processing[guid] = nil
+            return
+        end
+
+        -- Jacks can only be placed on number cards
+        if target.type ~= "number" then
+            rejectCard(
+                object,
+                caravanNumber,
+                player,
+                "Jack must be placed on a number card (Ace-10)."
+            )
+            GAME.processing[guid] = nil
+            return
+        end
+
+        -- Add guid to jack card
+        card.guid = guid
+
+        -- Remove the target card and any attached Kings
+        local success = removeCardAndAttachments(caravanNumber, player, target)
+        if not success then
+            rejectCard(
+                object,
+                caravanNumber,
+                player,
+                "Failed to remove target card."
+            )
+            GAME.processing[guid] = nil
+            return
+        end
+
+        -- Register the Jack (it was used to remove, so we track it)
+        GAME.registeredCards[guid] = {
+            caravan = caravanNumber,
+            player = player,
+            action = "removed",
+            removedCard = target.guid
+        }
+
+        -- Move Jack to a discard position near the caravan
+        local zone = getObjectFromGUID(ZONES[caravanNumber][player])
+        if zone then
+            local zonePos = zone.getPosition()
+            card.object.setPositionSmooth({
+                x = zonePos.x,
+                y = zonePos.y + 1,
+                z = zonePos.z - 2
+            })
+        end
+
+        -- Update the caravan value
+        updateCaravanValue(caravanNumber, player)
+
+        print(
+            "[CARAVAN] JACK REMOVED: " ..
+            card.name ..
+            " removed " ..
+            target.name ..
+            " (slot " ..
+            tostring(target.slot) ..
+            ")"
+        )
+        printCaravan(caravanNumber, player)
+
+        GAME.processing[guid] = nil
+        return
+
+    end
+
+
+    --------------------------------------------------------
+    -- Only number cards can be added normally
+    --------------------------------------------------------
 
 if card.type ~= "number" then
 
