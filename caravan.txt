@@ -492,7 +492,7 @@ end
 
 function findNumberCardBySlot(caravanNumber, player, slot)
     local caravan = GAME.caravans[caravanNumber][player]
-    
+
     for _, card in ipairs(caravan.cards) do
         if card.type == "number" and card.slot == slot then
             return card
