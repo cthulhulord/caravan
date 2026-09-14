@@ -2249,33 +2249,8 @@ function generateCaravanSnapPoints()
 
 
     --------------------------------------------------------
-    -- Apply all snap points
+
     --------------------------------------------------------
-
-
-                --------------------------------------------------------
-                -- Generate attachment snap points for Kings
-                -- These are positioned above each base snap point
-                --------------------------------------------------------
-
-                for slot = 0, SNAP_COUNT - 1 do
-                    local baseIndex = ((caravanNumber - 1) * 2 + (player - 1)) * SNAP_COUNT + slot + 1
-                    
-                    if snapPoints[baseIndex] then
-                        -- Create attachment point above the base point
-                        table.insert(
-                            snapPoints,
-                            {
-                                position = {
-                                    snapPoints[baseIndex].position[1],
-                                    CARAVAN_CARD_Y + ATTACHMENT_Y_OFFSET,
-                                    snapPoints[baseIndex].position[3]
-                                }
-                            }
-                        )
-                    end
-                end
-
     Global.setSnapPoints(snapPoints)
 
 
