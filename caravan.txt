@@ -452,16 +452,16 @@ end
 
 function findNumberCardAtPosition(caravanNumber, player, position)
     local caravan = GAME.caravans[caravanNumber][player]
-    
+
     -- Get the counter position to calculate relative positions
     local counter = getCounter(caravanNumber, player)
     if not counter then
         return nil
     end
-    
+
     local counterPos = counter.getPosition()
     local threshold = 1.5 -- Distance threshold to consider a card "at" a position
-    
+
     -- Check all cards in this caravan
     for _, card in ipairs(caravan.cards) do
         if card.type == "number" and card.guid then
@@ -480,7 +480,7 @@ function findNumberCardAtPosition(caravanNumber, player, position)
             end
         end
     end
-    
+
     return nil
 end
 
@@ -491,14 +491,20 @@ end
 ------------------------------------------------------------
 
 function findNumberCardBySlot(caravanNumber, player, slot)
+    if not GAME.caravans[caravanNumber] then
+        return nil
+    end
     local caravan = GAME.caravans[caravanNumber][player]
+    if not caravan then
+        return nil
+    end
 
     for _, card in ipairs(caravan.cards) do
         if card.type == "number" and card.slot == slot then
             return card
         end
     end
-    
+
     return nil
 end
 
@@ -513,10 +519,10 @@ function getSlotFromPosition(caravanNumber, player, position)
     if not counter then
         return nil
     end
-    
+
     local counterPos = counter.getPosition()
     local threshold = 1.0 -- Distance threshold for slot matching
-    
+
     -- Calculate expected positions for each slot
     local offsetX, offsetZ, spacing
     if player == 1 then
@@ -528,7 +534,7 @@ function getSlotFromPosition(caravanNumber, player, position)
         offsetZ = P2_SNAP_OFFSET_Z
         spacing = P2_SNAP_SPACING
     end
-    
+
     -- Check each slot position
     for slot = 1, SNAP_COUNT do
         local expectedX = counterPos.x + offsetX
@@ -550,7 +556,7 @@ function getSlotFromPosition(caravanNumber, player, position)
             return slot
         end
     end
-    
+
     return nil
 end
 
@@ -563,10 +569,10 @@ function sendCardToDiscard(cardObject, player)
     if not cardObject then
         return
     end
-    
+
     -- Use the dedicated discard pile object
     local discardPile = getObjectFromGUID(DISCARD_PILE_GUID)
-    
+
     if discardPile then
         local discardPos = discardPile.getPosition()
         discardPos.y = discardPos.y + 0.5  -- Slightly above the pile
@@ -610,19 +616,19 @@ function attachKingToCard(baseCard, kingCard)
     if not baseCard or not baseCard.guid then
         return false, "Base card must have a guid"
     end
-    
+
     if not kingCard or not kingCard.guid then
         return false, "King card must have a guid"
     end
-    
+
     -- Initialize the attached kings table for this base card if needed
     if not GAME.attachedKings[baseCard.guid] then
         GAME.attachedKings[baseCard.guid] = {}
     end
-    
+
     -- Add the king to the attachment list
     table.insert(GAME.attachedKings[baseCard.guid], kingCard.guid)
-    
+
     return true
 end
 
@@ -635,7 +641,7 @@ function removeKingAttachments(baseCardGuid)
     if not baseCardGuid then
         return
     end
-    
+
     if GAME.attachedKings[baseCardGuid] then
         GAME.attachedKings[baseCardGuid] = {}
     end
@@ -650,9 +656,9 @@ function removeCardAndAttachments(caravanNumber, player, cardToRemove)
     if not cardToRemove or not cardToRemove.guid then
         return false
     end
-    
+
     local caravan = GAME.caravans[caravanNumber][player]
-    
+
     -- Remove the card from the caravan cards table
     for i = #caravan.cards, 1, -1 do
         if caravan.cards[i].guid == cardToRemove.guid then
@@ -660,10 +666,10 @@ function removeCardAndAttachments(caravanNumber, player, cardToRemove)
             break
         end
     end
-    
+
     -- Remove any Kings attached to this card
     local attachedKings = GAME.attachedKings[cardToRemove.guid] or {}
-    
+
     -- Remove each attached King from the caravan cards table
     for _, kingGuid in ipairs(attachedKings) do
         for i = #caravan.cards, 1, -1 do
@@ -673,20 +679,20 @@ function removeCardAndAttachments(caravanNumber, player, cardToRemove)
             end
         end
     end
-    
+
     -- Clean up the attachment tracking
     removeKingAttachments(cardToRemove.guid)
-    
+
     -- Remove from registered cards
     GAME.registeredCards[cardToRemove.guid] = nil
-    
+
     -- Remove any Kings that were attached to this card from registeredCards
     if GAME.attachedKings[cardToRemove.guid] then
         for _, kingGuid in ipairs(GAME.attachedKings[cardToRemove.guid]) do
             GAME.registeredCards[kingGuid] = nil
         end
     end
-    
+
     return true
 end
 
